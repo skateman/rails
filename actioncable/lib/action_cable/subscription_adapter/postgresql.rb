@@ -40,6 +40,19 @@ module ActionCable
         end
       end
 
+      def new_connection
+        ar_conn = ActiveRecord::Base.connection_pool.checkout
+        ActiveRecord::Base.connection_pool.remove ar_conn
+
+        pg_conn = ar_conn.raw_connection
+
+        unless pg_conn.is_a?(PG::Connection)
+          raise 'ActiveRecord database must be Postgres in order to use the Postgres ActionCable storage adapter'
+        end
+
+        yield pg_conn
+      end
+
       private
         def listener
           @listener || @server.mutex.synchronize { @listener ||= Listener.new(self, @server.event_loop) }
@@ -60,7 +73,7 @@ module ActionCable
           end
 
           def listen
-            @adapter.with_connection do |pg_conn|
+            @adapter.new_connection do |pg_conn|
               catch :shutdown do
                 loop do
                   until @queue.empty?
